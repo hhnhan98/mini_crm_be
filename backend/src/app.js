@@ -2,8 +2,17 @@ import express from "express";
 import authRoutes from "./modules/auth/auth.route.js";
 import projectRoutes from "./modules/project/project.route.js";
 import taskRoutes from "./modules/task/task.route.js";
+import cors from "cors";
 
 const app = express();
+
+// CORS
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
 
 // parse JSON
 app.use(express.json());
@@ -17,9 +26,9 @@ app.get("/health", (req, res) => {
 });
 
 // ROUTES
-app.use("/auth", authRoutes);
-app.use("/projects", projectRoutes);
-app.use("/tasks", taskRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
+app.use("/api/tasks", taskRoutes);
 
 // 404 handler
 app.use((req, res) => {

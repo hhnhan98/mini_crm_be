@@ -29,7 +29,10 @@ export const register = async ({ email, password, name }) => {
 
   const { password: _, ...userWithoutPassword } = user;
 
-  return userWithoutPassword;
+  return {
+    ...userWithoutPassword,
+    role: user.role, // đảm bảo rằng FE không bị thiếu context user
+  };
 };
 
 // Login function
@@ -53,11 +56,12 @@ export const login = async ({ email, password }) => {
   );
 
   return {
-    token,
+    accessToken: token,
     user: {
       id: user.id,
       email: user.email,
       name: user.name,
+      role: user.role,
     },
   };
 };

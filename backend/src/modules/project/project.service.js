@@ -24,11 +24,7 @@ export const createProject = async ({ name, description, userId }) => {
       data: {
         name,
         description,
-        creator: {
-          connect: {
-            id: userId,
-          },
-        },
+        createdById: userId,
       },
     });
 

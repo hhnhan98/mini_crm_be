@@ -144,6 +144,9 @@ export const addMember = async (req, res) => {
         message: "accountId and role are required",
       });
     }
+    const cleanRole = role.trim().toUpperCase();
+
+    const allowedRoles = ["OWNER", "MEMBER"];
 
     if (!allowedRoles.includes(cleanRole)) {
       return res.status(400).json({
@@ -154,7 +157,7 @@ export const addMember = async (req, res) => {
     const member = await projectService.addMember({
       projectId,
       accountId,
-      role,
+      role: cleanRole,
       currentUser: req.user,
     });
 

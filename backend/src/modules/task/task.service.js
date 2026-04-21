@@ -188,14 +188,39 @@ export const updateTask = async (taskId, userId, payload) => {
 
   // ===== BUILD DATA (sau khi validate xong) =====
 
-  const data = {
-    title: payload.title?.trim(),
-    description: payload.description?.trim() || null,
-    priority: payload.priority,
-    status: payload.status,
-    assigneeId:
-      payload.assigneeId !== undefined ? payload.assigneeId : undefined,
-  };
+  // const data = {
+  //   title: payload.title?.trim(),
+  //   description: payload.description?.trim() || null,
+  //   priority: payload.priority,
+  //   status: payload.status,
+  //   assigneeId:
+  //     payload.assigneeId !== undefined ? payload.assigneeId : undefined,
+  // };
+
+  // if (payload.deadline !== undefined) {
+  //   data.deadline = payload.deadline ? new Date(payload.deadline) : null;
+  // }
+  const data = {};
+
+  if (payload.title !== undefined) {
+    data.title = payload.title.trim();
+  }
+
+  if (payload.description !== undefined) {
+    data.description = payload.description?.trim() || null;
+  }
+
+  if (payload.priority !== undefined) {
+    data.priority = payload.priority;
+  }
+
+  if (payload.status !== undefined) {
+    data.status = payload.status;
+  }
+
+  if (payload.assigneeId !== undefined) {
+    data.assigneeId = payload.assigneeId;
+  }
 
   if (payload.deadline !== undefined) {
     data.deadline = payload.deadline ? new Date(payload.deadline) : null;

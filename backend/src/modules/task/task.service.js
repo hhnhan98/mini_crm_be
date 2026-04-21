@@ -149,22 +149,37 @@ export const updateTask = async (taskId, userId, payload) => {
 
   // ===== VALIDATION =====
 
-  // status (FIX workflow)
-  if (payload.status) {
+  // Status
+  if (payload.status !== undefined) {
     if (!VALID_STATUS.includes(payload.status)) {
       throw new AppError("Invalid status", 400);
     }
 
-    // tránh update cùng trạng thái
-    if (payload.status === task.status) {
-      delete payload.status;
-    } else if (!canTransition(task.status, payload.status)) {
-      throw new AppError("Invalid status transition", 400);
+    if (payload.status !== task.status) {
+      // DONE lock
+      if (task.status === "DONE") {
+        throw new AppError("Task already completed", 400);
+      }
+
+      // transition rule
+      if (!canTransition(task.status, payload.status)) {
+        throw new AppError("Invalid status transition", 400);
+      }
+
+      // permission
+      if (member.role === "MEMBER") {
+        if (task.assigneeId !== userId) {
+          throw new AppError("Permission denied", 403);
+        }
+      }
     }
   }
 
   // priority
-  if (payload.priority && !VALID_PRIORITY.includes(payload.priority)) {
+  if (
+    payload.priority !== undefined &&
+    !VALID_PRIORITY.includes(payload.priority)
+  ) {
     throw new AppError("Invalid priority", 400);
   }
 
@@ -187,7 +202,6 @@ export const updateTask = async (taskId, userId, payload) => {
   }
 
   // ===== BUILD DATA (sau khi validate xong) =====
-
   // const data = {
   //   title: payload.title?.trim(),
   //   description: payload.description?.trim() || null,
@@ -196,10 +210,10 @@ export const updateTask = async (taskId, userId, payload) => {
   //   assigneeId:
   //     payload.assigneeId !== undefined ? payload.assigneeId : undefined,
   // };
-
   // if (payload.deadline !== undefined) {
   //   data.deadline = payload.deadline ? new Date(payload.deadline) : null;
   // }
+
   const data = {};
 
   if (payload.title !== undefined) {
@@ -260,55 +274,16 @@ export const deleteTask = async (taskId, userId) => {
 };
 
 // UPDATE TASK STATUS
-export const updateTaskStatus = async ({ taskId, newStatus, currentUser }) => {
-  // 1. get task
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
-  });
+export const updateTaskStatus = async (req, res, next) => {
+  try {
+    const { taskId } = req.params;
+    const { status } = req.body;
+    const userId = req.user.id;
 
-  if (!task) {
-    throw new AppError("Task not found", 404);
+    const result = await updateTask(taskId, userId, { status });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
   }
-
-  if (task.deletedAt) {
-    throw new AppError("Task already deleted", 400);
-  }
-
-  // 2. validate status
-  if (!VALID_STATUS.includes(newStatus)) {
-    throw new AppError("Invalid status", 400);
-  }
-
-  // 3. tránh update cùng trạng thái (optional nhưng nên có)
-  if (task.status === newStatus) {
-    return task;
-  }
-
-  // 4. get member
-  const member = await ensureProjectMember(task.projectId, currentUser.id);
-
-  // 5. check DONE locked
-  if (task.status === "DONE") {
-    throw new AppError("Task already completed", 400);
-  }
-
-  // 6. check transition
-  if (!canTransition(task.status, newStatus)) {
-    throw new AppError("Invalid status transition", 400);
-  }
-
-  // 7. permission
-  if (member.role === "MEMBER") {
-    if (task.assigneeId !== currentUser.id) {
-      throw new AppError("Permission denied", 403);
-    }
-  }
-
-  // 8. update
-  return prisma.task.update({
-    where: { id: taskId },
-    data: {
-      status: newStatus,
-    },
-  });
 };

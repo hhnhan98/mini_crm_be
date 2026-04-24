@@ -3,15 +3,12 @@ import { AppError } from "../../utils/AppError.js";
 
 // Get project member role
 export const getProjectMember = async (projectId, userId) => {
-  console.log("CHECK MEMBER - projectId:", projectId);
-  console.log("CHECK MEMBER - userId:", userId);
   const member = await prisma.projectMember.findFirst({
     where: {
       projectId,
       accountId: userId,
     },
   });
-  console.log("CHECK MEMBER - result:", member);
 
   if (!member) {
     throw new AppError("Not a project member", 403);

@@ -27,14 +27,13 @@ const validateStatusTransition = (current, next) => {
   }
 };
 
-// ✅ createTask — chỉ OWNER/MANAGER mới tạo được
+// createTask — chỉ OWNER/MANAGER mới tạo được
 export const createTask = async (userId, payload) => {
   const { title, description, priority, assigneeId, projectId } = payload;
 
   if (!projectId) throw new AppError("projectId là bắt buộc", 400);
 
-  const member = await getProjectMember(projectId, userId); // ✅ dùng permission layer
-  console.log("GET TASKS - member found:", member);
+  const member = await getProjectMember(projectId, userId); // dùng permission layer
 
   if (member.role === "MEMBER") {
     throw new AppError("MEMBER không có quyền tạo task", 403);
@@ -72,15 +71,13 @@ export const getTaskById = async (taskId, userId) => {
 
   if (!task) throw new AppError("Task không tồn tại", 404);
 
-  await getProjectMember(task.projectId, userId); // ✅ dùng permission layer
+  await getProjectMember(task.projectId, userId); // dùng permission layer
   return task;
 };
 
 // Get Tasks By Project
 export const getTasksByProject = async (projectId, userId) => {
-  console.log("GET TASKS - projectId:", projectId);
-  console.log("GET TASKS - userId:", userId);
-  await getProjectMember(projectId, userId); // ✅ thay toàn bộ đoạn findFirst cũ
+  await getProjectMember(projectId, userId);
 
   return prisma.task.findMany({
     where: { projectId, deletedAt: null },
@@ -91,17 +88,17 @@ export const getTasksByProject = async (projectId, userId) => {
   });
 };
 
-// ✅ updateTask — OWNER/MANAGER/assignee mới update được
+// updateTask — OWNER/MANAGER/assignee mới update được
 export const updateTask = async (taskId, userId, payload) => {
   const task = await prisma.task.findFirst({
     where: { id: taskId, deletedAt: null },
   });
   if (!task) throw new AppError("Task không tồn tại", 404);
 
-  const member = await getProjectMember(task.projectId, userId); // ✅
-  canUpdateTask(member.role, task, userId); // ✅ throw nếu không có quyền
+  const member = await getProjectMember(task.projectId, userId);
+  canUpdateTask(member.role, task, userId);
 
-  // ✅ Whitelist fields — không cho inject projectId, createdById, deletedAt
+  // Whitelist fields — không cho inject projectId, createdById, deletedAt
   const allowedFields = {
     ...(payload.title !== undefined && { title: payload.title }),
     ...(payload.description !== undefined && {
@@ -113,7 +110,7 @@ export const updateTask = async (taskId, userId, payload) => {
     ...(payload.deadline !== undefined && { deadline: payload.deadline }),
   };
 
-  // ✅ Chỉ OWNER/MANAGER mới assign
+  // Chỉ OWNER/MANAGER mới assign
   if ("assigneeId" in payload) {
     canAssignTask(member.role);
 
@@ -133,19 +130,19 @@ export const updateTask = async (taskId, userId, payload) => {
 
   return prisma.task.update({
     where: { id: taskId },
-    data: allowedFields, // ✅ safe
+    data: allowedFields,
   });
 };
 
-// ✅ deleteTask — OWNER/MANAGER hoặc creator mới xóa được
+// deleteTask — OWNER/MANAGER hoặc creator mới xóa được
 export const deleteTask = async (taskId, userId) => {
   const task = await prisma.task.findFirst({
     where: { id: taskId, deletedAt: null },
   });
   if (!task) throw new AppError("Task không tồn tại", 404);
 
-  const member = await getProjectMember(task.projectId, userId); // ✅
-  canDeleteTask(member.role, task, userId); // ✅
+  const member = await getProjectMember(task.projectId, userId);
+  canDeleteTask(member.role, task, userId);
 
   await prisma.task.update({
     where: { id: taskId },

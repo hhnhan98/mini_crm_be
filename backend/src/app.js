@@ -1,7 +1,5 @@
+import routes from "./routes/index.js";
 import express from "express";
-import authRoutes from "./modules/auth/auth.route.js";
-import projectRoutes from "./modules/project/project.route.js";
-import taskRoutes from "./modules/task/task.route.js";
 import cors from "cors";
 
 const app = express();
@@ -17,6 +15,9 @@ app.use(
 // parse JSON
 app.use(express.json());
 
+// routes
+app.use("/api", routes);
+
 // health check
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -24,11 +25,6 @@ app.get("/health", (req, res) => {
     message: "Server running",
   });
 });
-
-// ROUTES
-app.use("/api/auth", authRoutes);
-app.use("/api/projects", projectRoutes);
-app.use("/api/tasks", taskRoutes);
 
 // 404 handler
 app.use((req, res) => {

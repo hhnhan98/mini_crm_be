@@ -18,7 +18,6 @@ router.post("/", projectController.createProject);
 router.get(
   "/:projectId/members",
   checkProjectAccess,
-  checkProjectRole(["OWNER"]),
   projectController.getMembers
 );
 

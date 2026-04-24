@@ -1,289 +1,156 @@
 import prisma from "../../config/prisma.js";
 import { AppError } from "../../utils/AppError.js";
 import {
-  ensureProjectMember,
-  canAssignTask,
+  getProjectMember,
   canUpdateTask,
   canDeleteTask,
+  canAssignTask,
 } from "./task.permission.js";
 
-// CONSTANTS
-const VALID_PRIORITY = ["LOW", "MEDIUM", "HIGH"];
+// Constants
 const VALID_STATUS = ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"];
-const STATUS_TRANSITIONS = {
-  TODO: ["IN_PROGRESS"],
-  IN_PROGRESS: ["IN_REVIEW"],
-  IN_REVIEW: ["DONE"],
-  DONE: [],
-};
-const canTransition = (currentStatus, nextStatus) => {
-  return STATUS_TRANSITIONS[currentStatus]?.includes(nextStatus);
+
+// Validate Status Transition
+const validateStatusTransition = (current, next) => {
+  const rules = {
+    TODO: ["IN_PROGRESS"],
+    IN_PROGRESS: ["IN_REVIEW"],
+    IN_REVIEW: ["DONE"],
+    DONE: [],
+  };
+
+  if (!rules[current]?.includes(next)) {
+    throw new AppError(
+      `Không thể chuyển trạng thái từ ${current} → ${next}`,
+      400
+    );
+  }
 };
 
-// CREATE TASK
+// ✅ createTask — chỉ OWNER/MANAGER mới tạo được
 export const createTask = async (userId, payload) => {
-  const {
-    title = "",
-    description,
-    projectId,
-    assigneeId,
-    priority,
-    deadline,
-  } = payload;
+  const { title, description, priority, assigneeId, projectId } = payload;
 
-  if (!title.trim()) {
-    throw new AppError("title is required", 400);
+  if (!projectId) throw new AppError("projectId là bắt buộc", 400);
+
+  const member = await getProjectMember(projectId, userId); // ✅ dùng permission layer
+  console.log("GET TASKS - member found:", member);
+
+  if (member.role === "MEMBER") {
+    throw new AppError("MEMBER không có quyền tạo task", 403);
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-  });
-
-  if (!project) {
-    throw new AppError("Project not found", 404);
-  }
-
-  // check member + get role
-  const member = await ensureProjectMember(projectId, userId);
-
-  // OPTIONAL RULE (safe default)
-  // MEMBER vẫn được tạo task nhưng không được assign người khác nếu muốn siết sau
   if (assigneeId) {
-    canAssignTask(member.role);
-
     const assignee = await prisma.projectMember.findFirst({
-      where: {
-        projectId,
-        accountId: assigneeId,
-      },
+      where: { projectId, accountId: assigneeId },
     });
-
-    if (!assignee) {
-      throw new AppError("Assignee must be in project", 400);
-    }
-  }
-
-  if (priority && !VALID_PRIORITY.includes(priority)) {
-    throw new AppError("Invalid priority", 400);
+    if (!assignee) throw new AppError("Assignee không thuộc project", 400);
   }
 
   return prisma.task.create({
     data: {
-      title: title.trim(),
-      description: description?.trim() || null,
-      projectId,
-      assigneeId: assigneeId ?? null,
+      title,
+      description,
       priority: priority || "MEDIUM",
-      deadline: deadline ? new Date(deadline) : null,
+      status: "TODO",
+      projectId,
+      assigneeId: assigneeId || null,
       createdById: userId,
     },
   });
 };
 
-// GET TASKS BY PROJECT
-export const getTasksByProject = async (query, userId) => {
-  const { projectId, status, search, page = 1, limit = 10 } = query;
-
-  if (!projectId?.trim()) {
-    throw new AppError("projectId is required", 400);
-  }
-
-  // Check access
-  await ensureProjectMember(projectId, userId);
-
-  const safePage = Math.max(Number(page) || 1, 1);
-  const safeLimit = Math.min(Number(limit) || 10, 50);
-
-  if (status && !VALID_STATUS.includes(status)) {
-    throw new AppError("Invalid status", 400);
-  }
-
-  const where = {
-    projectId: projectId.trim(),
-    deletedAt: null,
-    ...(status && { status }),
-    ...(search && {
-      title: { contains: search.trim(), mode: "insensitive" },
-    }),
-  };
-
-  const [items, total] = await Promise.all([
-    prisma.task.findMany({
-      where,
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.task.count({ where }),
-  ]);
-
-  return {
-    data: items,
-    meta: {
-      total,
-      page: safePage,
-      totalPages: Math.ceil(total / safeLimit),
+// Get Task By Id
+export const getTaskById = async (taskId, userId) => {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, deletedAt: null },
+    include: {
+      assignee: { select: { id: true, name: true, email: true } },
+      createdBy: { select: { id: true, name: true } },
     },
-  };
-};
-
-// UPDATE TASK
-export const updateTask = async (taskId, userId, payload) => {
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
   });
 
-  if (!task) {
-    throw new AppError("Task not found", 404);
-  }
+  if (!task) throw new AppError("Task không tồn tại", 404);
 
-  if (task.deletedAt) {
-    throw new AppError("Task already deleted", 400);
-  }
+  await getProjectMember(task.projectId, userId); // ✅ dùng permission layer
+  return task;
+};
 
-  // get member + role
-  const member = await ensureProjectMember(task.projectId, userId);
+// Get Tasks By Project
+export const getTasksByProject = async (projectId, userId) => {
+  console.log("GET TASKS - projectId:", projectId);
+  console.log("GET TASKS - userId:", userId);
+  await getProjectMember(projectId, userId); // ✅ thay toàn bộ đoạn findFirst cũ
 
-  // permission check
-  canUpdateTask(member.role, task, userId);
+  return prisma.task.findMany({
+    where: { projectId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    include: {
+      assignee: { select: { id: true, name: true } },
+    },
+  });
+};
 
-  // ===== VALIDATION =====
+// ✅ updateTask — OWNER/MANAGER/assignee mới update được
+export const updateTask = async (taskId, userId, payload) => {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, deletedAt: null },
+  });
+  if (!task) throw new AppError("Task không tồn tại", 404);
 
-  // Status
-  if (payload.status !== undefined) {
-    if (!VALID_STATUS.includes(payload.status)) {
-      throw new AppError("Invalid status", 400);
-    }
+  const member = await getProjectMember(task.projectId, userId); // ✅
+  canUpdateTask(member.role, task, userId); // ✅ throw nếu không có quyền
 
-    if (payload.status !== task.status) {
-      // DONE lock
-      if (task.status === "DONE") {
-        throw new AppError("Task already completed", 400);
-      }
+  // ✅ Whitelist fields — không cho inject projectId, createdById, deletedAt
+  const allowedFields = {
+    ...(payload.title !== undefined && { title: payload.title }),
+    ...(payload.description !== undefined && {
+      description: payload.description,
+    }),
+    ...(payload.priority !== undefined && { priority: payload.priority }),
+    ...(payload.status !== undefined && { status: payload.status }),
+    ...(payload.assigneeId !== undefined && { assigneeId: payload.assigneeId }),
+    ...(payload.deadline !== undefined && { deadline: payload.deadline }),
+  };
 
-      // transition rule
-      if (!canTransition(task.status, payload.status)) {
-        throw new AppError("Invalid status transition", 400);
-      }
-
-      // permission
-      if (member.role === "MEMBER") {
-        if (task.assigneeId !== userId) {
-          throw new AppError("Permission denied", 403);
-        }
-      }
-    }
-  }
-
-  // priority
-  if (
-    payload.priority !== undefined &&
-    !VALID_PRIORITY.includes(payload.priority)
-  ) {
-    throw new AppError("Invalid priority", 400);
-  }
-
-  // assignee
-  if (payload.assigneeId !== undefined) {
+  // ✅ Chỉ OWNER/MANAGER mới assign
+  if ("assigneeId" in payload) {
     canAssignTask(member.role);
 
     if (payload.assigneeId) {
       const assignee = await prisma.projectMember.findFirst({
-        where: {
-          projectId: task.projectId,
-          accountId: payload.assigneeId,
-        },
+        where: { projectId: task.projectId, accountId: payload.assigneeId },
       });
-
-      if (!assignee) {
-        throw new AppError("Assignee must be in project", 400);
-      }
+      if (!assignee) throw new AppError("Assignee không thuộc project", 400);
     }
   }
 
-  // ===== BUILD DATA (sau khi validate xong) =====
-  // const data = {
-  //   title: payload.title?.trim(),
-  //   description: payload.description?.trim() || null,
-  //   priority: payload.priority,
-  //   status: payload.status,
-  //   assigneeId:
-  //     payload.assigneeId !== undefined ? payload.assigneeId : undefined,
-  // };
-  // if (payload.deadline !== undefined) {
-  //   data.deadline = payload.deadline ? new Date(payload.deadline) : null;
-  // }
-
-  const data = {};
-
-  if (payload.title !== undefined) {
-    data.title = payload.title.trim();
-  }
-
-  if (payload.description !== undefined) {
-    data.description = payload.description?.trim() || null;
-  }
-
-  if (payload.priority !== undefined) {
-    data.priority = payload.priority;
-  }
-
-  if (payload.status !== undefined) {
-    data.status = payload.status;
-  }
-
-  if (payload.assigneeId !== undefined) {
-    data.assigneeId = payload.assigneeId;
-  }
-
-  if (payload.deadline !== undefined) {
-    data.deadline = payload.deadline ? new Date(payload.deadline) : null;
+  if ("status" in payload) {
+    if (!VALID_STATUS.includes(payload.status))
+      throw new AppError("Status không hợp lệ", 400);
+    validateStatusTransition(task.status, payload.status);
   }
 
   return prisma.task.update({
     where: { id: taskId },
-    data,
+    data: allowedFields, // ✅ safe
   });
 };
 
-// DELETE TASK (SOFT DELETE)
+// ✅ deleteTask — OWNER/MANAGER hoặc creator mới xóa được
 export const deleteTask = async (taskId, userId) => {
-  const task = await prisma.task.findUnique({
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, deletedAt: null },
+  });
+  if (!task) throw new AppError("Task không tồn tại", 404);
+
+  const member = await getProjectMember(task.projectId, userId); // ✅
+  canDeleteTask(member.role, task, userId); // ✅
+
+  await prisma.task.update({
     where: { id: taskId },
+    data: { deletedAt: new Date() },
   });
 
-  if (!task) {
-    throw new AppError("Task not found", 404);
-  }
-
-  if (task.deletedAt) {
-    return task; // idempotent
-  }
-
-  const member = await ensureProjectMember(task.projectId, userId);
-
-  // permission check
-  canDeleteTask(member.role);
-
-  return prisma.task.update({
-    where: { id: taskId },
-    data: {
-      deletedAt: new Date(),
-    },
-  });
-};
-
-// UPDATE TASK STATUS
-export const updateTaskStatus = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { status } = req.body;
-    const userId = req.user.id;
-
-    const result = await updateTask(taskId, userId, { status });
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
+  return { message: "Xóa task thành công" };
 };

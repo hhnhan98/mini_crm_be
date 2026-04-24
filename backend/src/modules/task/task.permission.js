@@ -3,12 +3,15 @@ import { AppError } from "../../utils/AppError.js";
 
 // Get project member role
 export const getProjectMember = async (projectId, userId) => {
+  console.log("CHECK MEMBER - projectId:", projectId);
+  console.log("CHECK MEMBER - userId:", userId);
   const member = await prisma.projectMember.findFirst({
     where: {
       projectId,
       accountId: userId,
     },
   });
+  console.log("CHECK MEMBER - result:", member);
 
   if (!member) {
     throw new AppError("Not a project member", 403);
@@ -19,19 +22,22 @@ export const getProjectMember = async (projectId, userId) => {
 
 // Check if user can update task
 export const canUpdateTask = (memberRole, task, userId) => {
-  // OWNER / MANAGER full quyền
+  // Kiểm tra đầu vào
+  if (!memberRole) throw new AppError("Member role is missing", 500);
+  if (!task) throw new AppError("Task data is missing", 500);
+
   if (memberRole === "OWNER" || memberRole === "MANAGER") return true;
 
-  // ASSIGNEE chỉ được update task của chính mình
-  if (task.assigneeId === userId) return true;
+  // Dùng Optional Chaining cho chắc chắn
+  if (task?.assigneeId === userId) return true;
 
-  throw new AppError("No permission to update task", 403);
+  throw new AppError("Bạn không có quyền chỉnh sửa công việc này", 403);
 };
 
 // Check if user can delete task
-export const canDeleteTask = (memberRole) => {
+export const canDeleteTask = (memberRole, task, userId) => {
   if (memberRole === "OWNER" || memberRole === "MANAGER") return true;
-
+  if (task.createdById === userId) return true;
   throw new AppError("No permission to delete task", 403);
 };
 

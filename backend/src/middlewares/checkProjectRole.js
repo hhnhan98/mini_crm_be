@@ -18,9 +18,8 @@ export const checkProjectRole = (allowedRoles = []) => {
         return res.status(403).json({
           message: "Permission denied",
         });
+        w;
       }
-
-      req.projectRole = member.role;
 
       next();
     } catch (error) {

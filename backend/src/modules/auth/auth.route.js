@@ -7,4 +7,7 @@ const router = express.Router();
 router.post("/register", authController.register);
 router.post("/login", authController.login);
 
+// SEARCH USERS
+router.get("/users/search", authController.searchUsers);
+
 export default router;

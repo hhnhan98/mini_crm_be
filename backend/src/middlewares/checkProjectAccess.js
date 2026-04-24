@@ -9,7 +9,12 @@ export const checkProjectAccess = async (req, res, next) => {
     }
 
     const userId = req.user.id;
+
     const projectId = req.params.projectId;
+    // Validate projectId
+    if (!projectId) {
+      return res.status(400).json({ message: "projectId là bắt buộc" });
+    }
 
     const member = await prisma.projectMember.findFirst({
       where: {
